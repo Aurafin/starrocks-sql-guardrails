@@ -2,7 +2,7 @@
 
 面向 AI / Codex / MCP / Agent 的 StarRocks SQL 预审 skill。
 
-它的目标不是替代 `EXPLAIN`、Profile 或人工 review，而是让 AI 在生成、审查、迁移或调优 StarRocks SQL 时，先主动避开一批高频且代价很高的坑：缺少分区谓词、分区裁剪失效、DELETE 后分区列 `min/max` 退化、全局排序、错误 JOIN、`NOT IN` + `NULL`、隐式类型转换、`SELECT *`、外表 planning 膨胀、高 fanout 写入和 MV rewrite 限制等。
+它的目标不是替代 `EXPLAIN`、Profile 或人工 review，而是让 AI 在生成、审查、迁移或调优 StarRocks SQL/DDL 时，先主动避开一批高频且代价很高的坑：缺少分区谓词、分区裁剪失效、DELETE 后分区列 `min/max` 退化、改列注释误触发 Schema Change、全局排序、错误 JOIN、`NOT IN` + `NULL`、隐式类型转换、`SELECT *`、外表 planning 膨胀、高 fanout 写入和 MV rewrite 限制等。
 
 ## 适用场景
 

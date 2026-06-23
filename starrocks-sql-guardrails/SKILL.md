@@ -1,6 +1,6 @@
 ---
 name: starrocks-sql-guardrails
-description: 当编写、审查、迁移或调优 StarRocks SQL、DDL、INSERT、CTAS、物化视图、外表查询或 AI 生成 SQL 时使用。用通用且可验证的 guardrails 规避缺少分区谓词、分区裁剪失败、DELETE 后分区列 min/max 退化、全局排序、错误 JOIN/NESTLOOP/CROSS JOIN、NOT IN NULL、隐式类型转换、SELECT *、外表 planning 膨胀、高 fanout 写入和 MV rewrite 限制等常见坑。
+description: 当编写、审查、迁移或调优 StarRocks SQL、DDL、INSERT、CTAS、物化视图、外表查询或 AI 生成 SQL 时使用。用通用且可验证的 guardrails 规避缺少分区谓词、分区裁剪失败、DELETE 后分区列 min/max 退化、改列注释误触发 Schema Change、全局排序、错误 JOIN/NESTLOOP/CROSS JOIN、NOT IN NULL、隐式类型转换、SELECT *、外表 planning 膨胀、高 fanout 写入和 MV rewrite 限制等常见坑。
 ---
 
 # StarRocks SQL Guardrails

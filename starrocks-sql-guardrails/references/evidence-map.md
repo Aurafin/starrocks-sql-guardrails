@@ -24,6 +24,8 @@
   - DELETE 会把数据标记为 Deleted，Compaction 后物理回收；Compaction 完成前可能降低查询效率。
 - `docs/zh/sql-reference/sql-statements/table_bucket_part_index/TRUNCATE_TABLE.md`
   - `TRUNCATE TABLE ... PARTITION(...)` 可清空指定分区，不会对查询性能造成影响，但数据不可恢复。
+- `docs/zh/sql-reference/sql-statements/table_bucket_part_index/ALTER_TABLE.md`
+  - DDL 语法入口。具体是否走 comment-only 元数据路径要以源码解析和 handler 行为为准。
 
 ## 源码和测试锚点
 
@@ -57,6 +59,17 @@
   - BE 查询读取 delete predicates，并在 segment iterator 里过滤逻辑删除行。
 - `be/src/storage/olap_meta_reader.cpp`、`be/src/storage/meta_reader.cpp`
   - MetaScan 的普通 min/max 依赖 footer/segment zonemap，解释了有 DELETE 时普通 SQL 不能无条件信元数据。
+- `fe/fe-core/src/main/java/com/starrocks/sql/parser/StarRocks.g4`
+  - `modifyColumnCommentClause : MODIFY COLUMN identifier comment` 与 `modifyColumnClause : MODIFY COLUMN columnDesc ...` 是两条不同语法；只写列名和 comment 才会进入 comment-only 路径。
+- `fe/fe-core/src/main/java/com/starrocks/sql/parser/AstBuilder.java`
+  - `visitModifyColumnCommentClause()` 构造 `ModifyColumnCommentClause`；带完整列定义的 `visitModifyColumnClause()` 构造普通 `ModifyColumnClause`。
+- `fe/fe-core/src/main/java/com/starrocks/alter/SchemaChangeHandler.java`
+  - `processModifyColumnComment()` 只查找目标列、`setComment()` 并写 `ModifyColumnCommentLog`；`analyzeAndCreateJob()` 遇到单独的 `ModifyColumnCommentClause` 后 `return null`，不会继续创建 schema change job。
+  - 普通 `ModifyColumnClause` 会走 `processModifyColumn()`、`finalAnalyze()` 和后续 schema change/fast schema evolution 处理，因此只改注释时不要带完整列定义。
+- `fe/fe-core/src/test/java/com/starrocks/alter/SchemaChangeHandlerTest.java`
+  - 覆盖 `MODIFY COLUMN COMMENT can not be combined with other alter operations`，说明 comment-only alter 不能和其它 schema change 子句混用。
+- `fe/fe-core/src/test/java/com/starrocks/alter/AlterTest.java`
+  - `testCatalogModifyColumn()` 覆盖 `modify column k3 bigint comment ...` 被解析成普通 `ModifyColumnClause`，不是 comment-only 路径。
 - `fe/fe-core/src/main/java/com/starrocks/analysis/JoinOperator.java`、`fe/fe-core/src/main/java/com/starrocks/sql/optimizer/rule/transformation/LargeInPredicateToJoinRule.java`
   - `NOT IN` 对应 `NULL AWARE LEFT ANTI JOIN`，大 IN/NOT IN 可改写成 semi/anti join，但要保留 NULL-aware 语义。
 - `be/src/common/config.h`、`be/src/exec/olap_common.cpp`、`be/src/exec/olap_scan_node.cpp`
@@ -88,6 +101,7 @@
 - varchar 数字、日期字符串和 join key 类型不一致，会导致隐式 cast、统计估算差或业务比较语义错误。
 - duplicate/detail 分区表发生 DELETE 后，分区列 min/max 不能再默认认为只扫最新/最老分区；必须看 `EXPLAIN`。
 - 整分区清理优先用 `TRUNCATE TABLE ... PARTITION(...)` / `DROP PARTITION`；大批量 DELETE 会留下 delete predicate、增加 compaction/版本压力，还会影响部分元数据优化。`TRUNCATE` 不可恢复。
+- 只改列注释时使用 `MODIFY COLUMN <column_name> COMMENT '<new_comment>'`；不要附带完整列定义，否则会走普通列定义修改路径，可能触发 Schema Change。
 - `NOT IN` 子查询要先确认 NULL；这类问题常表现为“结果为空/少数据”，但本质是 SQL 语义。
 - RuntimeFilter、short key、zonemap、count distinct 阶段选择都可以作为诊断线索，但不能替代分区谓词、类型一致、JOIN key 完整和统计信息验证。
 

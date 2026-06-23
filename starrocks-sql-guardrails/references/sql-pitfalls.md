@@ -87,7 +87,32 @@ SELECT min(dt), max(dt) FROM fact_detail;
 - 未 DELETE 的简单分区列 `max` 可期待 `partitions=1/N`；做过 DELETE 后如果仍要证明性能，必须看 `EXPLAIN` 是否出现 `TOP-N`、`partitions=N/N` 或其它实际扫描形态。
 - 不能只凭 `dt` 是分区字段就断言只扫最新分区。
 
-## 4. 外表查询不能只靠 LIMIT
+## 4. 只改列注释时不要带完整列定义
+
+高风险写法：
+
+```sql
+ALTER TABLE t MODIFY COLUMN k1 BIGINT NOT NULL COMMENT 'new comment';
+```
+
+规则：
+
+- 只修改列注释时，使用 comment-only 语法：
+
+```sql
+ALTER TABLE t MODIFY COLUMN k1 COMMENT 'new comment';
+```
+
+- 不要为了“保持完整定义”把类型、是否允许 NULL、聚合类型、默认值、列位置等一起写上；这会被解析为普通列定义修改，而不是单纯改注释，可能进入 Schema Change 路径。
+- comment-only 语法只更新元数据里的列注释，并写 edit log；不要和 `ADD COLUMN`、`DROP COLUMN`、`ORDER BY(...)` 等其它 alter 子句合并在同一条语句里。
+- 这条规则适用于主键列、键列和普通列；前提仍然是目标列存在，且 comment 不是 `NULL`。
+
+验证：
+
+- 语句形态应是 `MODIFY COLUMN <column_name> COMMENT '<new_comment>'`，而不是 `MODIFY COLUMN <full_column_definition>`。
+- 如果误写了完整定义，按普通 schema change 风险处理：看是否创建 schema change job、表状态、MV 失效风险和执行窗口。
+
+## 5. 外表查询不能只靠 LIMIT
 
 适用：Hive、Hudi、Iceberg、Paimon、JDBC 等 external catalog。
 
@@ -103,7 +128,7 @@ SELECT min(dt), max(dt) FROM fact_detail;
 - 如果 planning 慢或 FE 内存高，优先确认选中分区数和外表元数据规模。
 - 如果错误是缺文件、读旧文件、snapshot/manifest 不一致，这是外表元数据诊断问题；只询问 catalog 类型、分区、refresh history，不要把它写成 SQL guardrail。
 
-## 5. JOIN 谓词必须完整、等值、alias 正确
+## 6. JOIN 谓词必须完整、等值、alias 正确
 
 高风险写法：
 
@@ -130,7 +155,7 @@ LEFT JOIN fact c
 - `EXPLAIN` 不应出现非预期 `NESTLOOP JOIN` / `CROSS JOIN`。
 - 每个大表 scan 都应有预期谓词；join 节点行数估算不能爆炸。
 
-## 6. 不要把 hint 当默认解法
+## 7. 不要把 hint 当默认解法
 
 规则：
 
@@ -144,7 +169,7 @@ LEFT JOIN fact c
 - 先用 hint 对比 good/bad plan，确认症状来自计划选择。
 - 生产使用 hint 前说明副作用和回滚方式。
 
-## 7. 全局排序和宽窗口要先减数据
+## 8. 全局排序和宽窗口要先减数据
 
 高风险写法：
 
@@ -173,7 +198,7 @@ FROM (
 - `EXPLAIN` 看 `SORT`、`TOP-N`、`ANALYTIC`、`MERGING-EXCHANGE`。
 - Profile 中 sort/window 的 `SpillBytes`、`MaxBufferedBytes`、`PeakBufferedRows` 异常时必须改写或限流。
 
-## 8. 避免 `SELECT *` 和宽列穿透重算子
+## 9. 避免 `SELECT *` 和宽列穿透重算子
 
 规则：
 
@@ -185,7 +210,7 @@ FROM (
 
 - `EXPLAIN VERBOSE` 或逻辑计划中，各 scan/project 输出列应与实际需要一致。
 
-## 9. 类型要显式，尤其是数字字符串、日期和 join key
+## 10. 类型要显式，尤其是数字字符串、日期和 join key
 
 高风险写法：
 
@@ -212,7 +237,7 @@ WHERE amount = CAST('190000' AS DECIMAL(22, 2))
 
 - `EXPLAIN` 谓词里不要出现意外 cast、字符串比较或统计信息缺失。
 
-## 10. 高基数聚合要先过滤再聚合
+## 11. 高基数聚合要先过滤再聚合
 
 高风险形态：
 
@@ -232,7 +257,7 @@ WHERE amount = CAST('190000' AS DECIMAL(22, 2))
 - `EXPLAIN` 看 `AGGREGATE` 的位置是否在强过滤之前。
 - Profile 看聚合节点的 peak memory、hash table、spill。
 
-## 11. CTAS / INSERT / LOAD / DELETE 避免高 fanout
+## 12. CTAS / INSERT / LOAD / DELETE 避免高 fanout
 
 规则：
 
@@ -248,7 +273,7 @@ WHERE amount = CAST('190000' AS DECIMAL(22, 2))
 - 失败或慢在 commit/publish/version 阶段时，不要只盯执行算子。
 - DELETE 后关注 delete predicate、版本数和 compaction 压力；不要只看 SQL 返回耗时。
 
-## 12. `NOT IN` 遇到 NULL 是语义坑
+## 13. `NOT IN` 遇到 NULL 是语义坑
 
 高风险写法：
 
@@ -277,7 +302,7 @@ WHERE customer_id NOT IN (
 - 检查子查询输出列是否可能为 NULL。
 - `EXPLAIN` 中 `NULL AWARE LEFT ANTI JOIN` 通常说明优化器在保留 `NOT IN` 的 NULL-aware 语义。
 
-## 13. MV rewrite SQL 避开明确限制
+## 14. MV rewrite SQL 避开明确限制
 
 规则：
 
@@ -290,7 +315,7 @@ WHERE customer_id NOT IN (
 - 用 `EXPLAIN` 确认是否命中 MV rewrite，而不是只确认 MV 创建成功。
 - MV refresh 慢时看刷新分区数、base table 扫描分区数、是否启用 spill，而不是只调大超时。
 
-## 14. 不把已修 bug 写成通用 SQL 禁忌
+## 15. 不把已修 bug 写成通用 SQL 禁忌
 
 规则：
 
