@@ -17,8 +17,9 @@
 
 ```bash
 git clone https://github.com/Aurafin/starrocks-sql-guardrails.git
+cd starrocks-sql-guardrails
 mkdir -p ~/.codex/skills
-ln -s "$(pwd)/starrocks-sql-guardrails/starrocks-sql-guardrails" ~/.codex/skills/starrocks-sql-guardrails
+ln -s "$(pwd)/starrocks-sql-guardrails" ~/.codex/skills/starrocks-sql-guardrails
 ```
 
 也可以直接复制内层目录：
