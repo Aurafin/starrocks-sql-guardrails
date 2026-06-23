@@ -1,0 +1,4 @@
+interface:
+  display_name: "StarRocks SQL 写法护栏"
+  short_description: "审查 StarRocks SQL 的常见性能和正确性坑"
+  default_prompt: "使用 $starrocks-sql-guardrails 审查或编写 StarRocks SQL，重点检查分区裁剪、JOIN、排序、窗口、类型、外表、MV 和 CTAS/INSERT 风险。"
