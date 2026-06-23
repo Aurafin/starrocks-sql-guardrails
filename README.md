@@ -54,12 +54,6 @@ cp -R starrocks-sql-guardrails ~/.codex/skills/starrocks-sql-guardrails
 - 验证：最小必要的 `EXPLAIN` / Profile / DDL 检查项。
 - 还缺：不能证明结论时需要的最小信息。
 
-## 公开内容说明
-
-本仓库只包含可公开复用的规则、抽象模式和代码证据索引，不包含飞书群聊原文、客户名、人员信息、内部链接、message id、query id 或私有 SQL。
-
-规则以 StarRocks 公开代码路径和可复现行为为准。某个版本已修复的问题不应该被写成永久 SQL 禁忌；遇到版本相关问题时，应结合 `evidence-map.md` 和目标版本再次确认。
-
 ## 校验
 
 如果你也使用 Codex 的 skill-creator，可以在仓库根目录运行：
