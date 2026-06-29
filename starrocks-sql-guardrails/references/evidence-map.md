@@ -31,6 +31,16 @@
 
 - `fe/fe-core/src/main/java/com/starrocks/sql/optimizer/QueryOptimizer.java`
   - 谓词下推、MV rewrite、重复 partition prune、external table partition prune 前的规划顺序。
+- `fe/fe-core/src/main/java/com/starrocks/planner/OlapScanNode.java`
+  - OLAP scan 的 explain 会输出 `partitions`、`tabletRatio`、`cardinality`、`avgRowSize`；verbose 路径输出 `partitionsRatio`、`tabletsRatio`、`actualRows`、`avgRowSize`。
+- `fe/fe-core/src/main/java/com/starrocks/sql/Explain.java`
+  - 物理计划 explain 会在 OLAP scan 上输出 `partitionRatio` 和 `tabletRatio`，可用于估算扫描范围。
+- `be/src/exec/scan_node.cpp`、`be/src/exec/scan_node.h`
+  - scan node 的通用 Profile counter 包含 `BytesRead`、`RowsRead` 等扫描量指标。
+- `be/src/exec/olap_scan_node.cpp`、`be/src/exec/pipeline/scan/olap_chunk_source.cpp`
+  - OLAP scan Profile 包含 `CompressedBytesRead`、`UncompressedBytesRead`、`RawRowsRead`、`ReadPagesNum` 等扫描输入指标。
+- `be/src/exec/workgroup/work_group.cpp`、`fe/fe-core/src/main/java/com/starrocks/catalog/ResourceGroup.java`
+  - Resource Group 支持 `big_query_scan_rows_limit`，BE 会按 query context 的 scan rows 判断 big query scan rows limit；这说明扫描行数是系统资源治理指标，但不应替代 SQL 侧减少扫描量。
 - `fe/fe-core/src/test/java/com/starrocks/sql/optimizer/rule/transformation/FurtherPartitionPruneTest.java`
   - 同时包含可裁剪和不可裁剪的函数/谓词形态，证明不能简单按函数名下结论。
 - `fe/fe-core/src/main/java/com/starrocks/sql/optimizer/rule/transformation/pruner/ExtractRangePredicateFromScalarApplyRule.java`
@@ -94,6 +104,8 @@
 这些是支持历史中反复出现的抽象模式，不是无条件事实：
 
 - 函数包裹分区列、复杂 `OR`、不稳定日期字符串格式，可能让等价业务条件扫描更多分区。
+- 同一个大事实表在多个 CTE、子查询、`UNION ALL` 分支或 self-join 中重复出现时，要先确认 `EXPLAIN` 里是否重复 scan；重复扫描会放大 IO、CPU、内存和调度不稳定性。
+- 没有过滤条件的事实表查询必须先确认表大小和业务全扫必要性；不能只因为 SQL 语义正确就默认可执行。
 - 子查询常量、函数常量、表达式分区的裁剪能力随版本和表达式变化，必须看目标版本计划。
 - 重复 self-join 的 alias 复制错误会让某个表副本缺过滤，进而放大 join、sort、agg。
 - `NESTLOOP JOIN` / `CROSS JOIN` 在大表上默认高风险，但小表或真正需要非等值语义时可能合理。

@@ -2,7 +2,7 @@
 
 这份检查表用于 AI 生成或审查 StarRocks SQL。每条规则都应通过表结构、`EXPLAIN` 或 Profile 验证，不要只凭关键词判断。
 
-## 1. 大表查询先要有扫描预算
+## 1. 扫描预算是全局第一优先级
 
 高风险写法：
 
@@ -10,11 +10,22 @@
 SELECT ...
 FROM big_fact
 WHERE user_id = 123;
+
+WITH a AS (SELECT ... FROM big_fact WHERE dt >= '2026-06-01'),
+     b AS (SELECT ... FROM big_fact WHERE dt >= '2026-06-01'),
+     c AS (SELECT ... FROM big_fact WHERE dt >= '2026-06-01')
+SELECT ...
+FROM a JOIN b ... JOIN c ...;
 ```
 
 规则：
 
+- 审查任何非小表 SQL 时，先数 scan 节点，再估扫描数据量；后续 JOIN、SORT、AGG、WINDOW 都建立在扫描输入之上。
 - 大事实表、事件表、外表、宽表默认要求分区谓词，除非用户明确要全量扫描。
+- 没有过滤条件或没有分区谓词时，必须先判断表数据量、分区数、tablet 数和业务是否允许全表扫描；不能直接生成“看起来正确”的事实表全扫 SQL。
+- 同一个大表在一个 SQL 中被多次扫描时，要默认高风险。CTE、子查询、`UNION ALL` 分支不应被假定会自动物化或复用，必须看 `EXPLAIN` 是否仍有多个 scan 节点。
+- 如果多个分支对同一事实表做相近过滤，优先考虑合并成一次扫描后用条件聚合、`CASE WHEN`、预聚合、半连接或临时/物化中间结果表达；不能合并时要说明每次扫描的必要性。
+- 先减少扫描输入，再做 JOIN、排序、窗口和高基数聚合。扫描数据越多，查询越依赖当前集群 CPU、IO、内存和并发状态，稳定性越差。
 - 时间分区表优先写半开区间：
 
 ```sql
@@ -22,12 +33,16 @@ WHERE dt >= '2026-06-01'
   AND dt <  '2026-07-01'
 ```
 
-- 没有分区谓词时，先追问或补充业务时间/租户范围；如果确实全扫，只提示风险和运行策略，不要假装普通 SQL 改写可以消除全扫。
+- 没有分区谓词时，先追问或补充业务时间、租户、状态等范围；如果确实全扫，只提示风险和运行策略，不要假装普通 SQL 改写可以消除全扫。
+- `LIMIT` 只能证明最终返回行数少，不能单独证明扫描量少；必须看 scan 节点是否真的有 limit/predicate 下推或只选中少量分区/tablet。
 
 验证：
 
-- `EXPLAIN` 中分区表应看到 `partitions=x/y` 或 `partitionRatio`，且 `x` 明显小于 `y`。
+- `EXPLAIN` 中先按表统计 scan 节点数量；同一大表出现多个 scan 节点时，要列为主要风险。
+- 分区表应看到 `partitions=x/y` 或 `partitionRatio`，且 `x` 明显小于 `y`；tablet 也应看 `tabletRatio`/`tabletsRatio`。
+- 看 scan 节点的 `cardinality`/`actualRows`、`avgRowSize`、输出列，估算扫描行数和扫描字节量。
 - scan 节点的 `PREDICATES` 应包含分区谓词或等价下推谓词。
+- 已执行 SQL 用 Profile 汇总各 scan 节点的 `RowsRead`、`RawRowsRead`、`BytesRead`、`CompressedBytesRead`；如果读入远大于最终输出，优先改扫描范围或重复扫描结构。
 
 ## 2. 分区谓词要写成容易裁剪的形态
 
